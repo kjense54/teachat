@@ -14,6 +14,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const WIDTH = 30
+const HEIGHT = 5
+
 // dial the server
 func connectToServer() net.Conn {
 	address := "localhost:33183"
@@ -43,15 +46,12 @@ type model struct {
 
 // initialize
 func initialModel() model {
-	const WIDTH = 30
-	const HEIGHT = 5
-
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
 
 	ta.Prompt = "| "
-	ta.CharLimit = 280
+	ta.CharLimit = WIDTH * HEIGHT 
 
 	ta.SetWidth(WIDTH)
 	ta.SetHeight(1)
@@ -62,7 +62,7 @@ func initialModel() model {
 	ta.ShowLineNumbers = false
 
 	vp := viewport.New(WIDTH, HEIGHT)
-	vp.SetContent(`Type a message and press Enter to chat`)
+	vp.SetContent(`Welcome to TeaChat! Type a message and press enter to send.`)
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
@@ -76,8 +76,31 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	connectToServer() 
+	//connectToServer() 
 	return textarea.Blink
+}
+
+func (m model) chopText(text string, size int) []string {
+	if len(text) == 0 {
+		return nil
+	}
+	if len(text) < size {
+		return []string{text}
+	}
+	var chopped []string = make([]string, 0, (len(text)-1)/size+1)
+	currentLen := 0
+	currentStart := 0
+	for i := range text {
+		if currentLen == size {
+			chopped = append(chopped, text[currentStart:i])
+			currentLen = 0
+			currentStart = i
+		} 
+		currentLen++
+	}
+	// add extra bits at end
+	chopped = append(chopped, text[currentStart:])
+	return chopped
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -96,14 +119,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
-			m.messages = append(m.messages, m.senderStyle.Render("You: ")+m.textarea.Value())
+			concat := m.senderStyle.Render("You: ") + m.textarea.Value() 
+			m.messages = append(m.messages, m.chopText(concat, WIDTH)...)
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.textarea.Reset()
 			m.viewport.GotoBottom()
-		// TODO: read from buffer more precisely, input text not always showing up until enter is pressed multiple times
-		/* TODO
+
+		/*
+TODO:
 			-[ ] read/write to buffer of specified size to ensure message recieved correctly
-			-[ ] only allow input up to [MAX_CHAR_LIMIT]
+			-[ ] chop! the string array into [MAX_CHAR_WIDTH] slices (append the username first, then chop)
+			-[ ] don't let hjkl etc move the viewport 
 			-[ ] send message to server (simple)
 			-[ ] send message struct to server (complex) using glob
 			*/
@@ -118,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return fmt.Sprintf("%s\n\n%s", m.viewport.View(), m.textarea.View(),)+ "\n\n"
+	return fmt.Sprintf("%s\n\n%s\n\n", m.viewport.View(), m.textarea.View(),)
 }
 
 
