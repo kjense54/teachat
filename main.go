@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -44,6 +45,11 @@ type model struct {
 	err error
 }
 
+type KeyMap struct {
+	PageUp key.Binding
+	PageDown key.Binding
+}
+
 // initialize
 func initialModel() model {
 	ta := textarea.New()
@@ -58,13 +64,15 @@ func initialModel() model {
 
 	// remove cursor line styling
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-
 	ta.ShowLineNumbers = false
+	ta.KeyMap.InsertNewline.SetEnabled(false)
 
 	vp := viewport.New(WIDTH, HEIGHT)
 	vp.SetContent(`Welcome to TeaChat! Type a message and press enter to send.`)
-
-	ta.KeyMap.InsertNewline.SetEnabled(false)
+	vp.KeyMap = viewport.KeyMap{
+		PageUp: key.NewBinding( key.WithKeys("up"), key.WithHelp("↑", "scroll up message viewport")), 
+		PageDown: key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "scroll down message viewport")),
+	}
 
 	return model{
 		textarea: ta,
