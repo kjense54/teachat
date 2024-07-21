@@ -2,11 +2,9 @@ package main
 
 import (
 	"fmt"
-	"context"
 	"net"
 	"log"
-	"time"
-	"strings"
+ "strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/key"
@@ -15,22 +13,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const WIDTH = 30
+const WIDTH = 60
 const HEIGHT = 5
-
-// dial the server
-func connectToServer() net.Conn {
-	address := "localhost:33183"
-	var d net.Dialer
-	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Minute)
-	defer cancel()
-
-	conn, err := d.DialContext(ctx, "tcp", address)	
-	if err != nil {
-		log.Fatal("Failed to %v", err)
-	}
-	return conn
-}
 
 type (
 	errMsg error
@@ -38,8 +22,11 @@ type (
 
 // model stores application state
 type model struct {
+	conn *net.Conn
 	viewport viewport.Model
 	messages []string
+	messageToSend string
+	connected bool
 	textarea textarea.Model
 	senderStyle lipgloss.Style
 	err error
@@ -75,8 +62,11 @@ func initialModel() model {
 	}
 
 	return model{
+		conn: nil,
 		textarea: ta,
 		messages: []string{},
+		messageToSend: "",
+		connected: false,
 		viewport: vp,
 		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
 		err: nil,
@@ -84,32 +74,9 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	//connectToServer() 
 	return textarea.Blink
 }
 
-func (m model) chopText(text string, size int) []string {
-	if len(text) == 0 {
-		return nil
-	}
-	if len(text) < size {
-		return []string{text}
-	}
-	var chopped []string = make([]string, 0, (len(text)-1)/size+1)
-	currentLen := 0
-	currentStart := 0
-	for i := range text {
-		if currentLen == size {
-			chopped = append(chopped, text[currentStart:i])
-			currentLen = 0
-			currentStart = i
-		} 
-		currentLen++
-	}
-	// add extra bits at end
-	chopped = append(chopped, text[currentStart:])
-	return chopped
-}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
@@ -127,20 +94,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
-			concat := m.senderStyle.Render("You: ") + m.textarea.Value() 
-			m.messages = append(m.messages, m.chopText(concat, WIDTH)...)
+			if m.textarea.Value() == "/connect" {
+				m.conn = ConnectToServer()
+				KeepAlive(*m.conn)
+				m.connected = true
+			}
+			m.messageToSend = m.textarea.Value() 
+			m.messages = append(m.messages, m.ChopText(m.senderStyle.Render("You: ") + m.messageToSend, WIDTH)...)
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.textarea.Reset()
 			m.viewport.GotoBottom()
 
-		/*
-TODO:
-			-[ ] read/write to buffer of specified size to ensure message recieved correctly
-			-[ ] chop! the string array into [MAX_CHAR_WIDTH] slices (append the username first, then chop)
-			-[ ] don't let hjkl etc move the viewport 
-			-[ ] send message to server (simple)
-			-[ ] send message struct to server (complex) using glob
-			*/
+
+			if m.connected {
+				return m, SendCmd(m, *m.conn) 
+			}
 		}
 
 	case errMsg:
@@ -162,3 +130,12 @@ func main() {
 		log.Fatalf("An error occured when attempting to run program: %v", err)
 	}
 }
+
+/*
+TODO:
+	-[x] chop! the string array into [MAX_CHAR_WIDTH] slices (append the username first, then chop)
+	-[x] don't let hjkl etc move the viewport 
+	-[x] stay connected to server for program lifetime
+	-[x] send message to server (simple)
+	-[ ] send message struct to server (complex) using glob
+		*/
