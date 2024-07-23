@@ -5,18 +5,15 @@ import (
 	"log"
 	"fmt"
 	"github.com/google/uuid"
-	"bufio"
-	//"encoding/gob"
+	"encoding/gob"
 )
-/*
 type Message struct {
-	cmd string
-	body string
-	sender string
-	receiver string
-}*/
+	Username string
+	Text string
+}
 
 func main() {
+	gob.Register(Message{})
 	address := "localhost:33183"
 
 	// listen for connections
@@ -28,7 +25,7 @@ func main() {
 
 	// channels
 	connected := make(chan net.Conn) // new connections
-	messages := make(chan string) // incoming messages
+	messages := make(chan Message) // incoming messages
 	disconnected := make(chan string) // disconected connections
 
 	// accept connections indefinitely 
@@ -52,28 +49,38 @@ func main() {
 			id := uuid.New().String()
 			onlineUsers[id] = c
 
+			// read messages from connection
 			go func(c net.Conn, id string) {
-				r := bufio.NewReader(c)
 				for {
-					message, err := r.ReadString('\n')
+					dec := gob.NewDecoder(c)
+					var m Message
+					err := dec.Decode(&m)
 					if err != nil {
+						fmt.Println("Decode: %v", err)
 						break
 					}
-					messages <- fmt.Sprintf("%s : %s", id, message)
+					messages <- m
 				}
 				disconnected <- id
 			}(c, id)
 
 		case m := <-messages:
-			fmt.Println(m)
-			for id, user := range onlineUsers {
-				go func(user net.Conn, m string) {
-					_, err := user.Write([]byte(m))
-					if err != nil {
-						disconnected <- id
-					}
-				}(user, m)
-			}	
+			switch m.Text {
+			case "ping!":
+				// do nothing
+				default:	
+				fmt.Printf("%s: %s", m.Username, m.Text)
+				/*
+				for id, user := range onlineUsers {
+					go func(user net.Conn, m string) {
+						_, err := user.Write([]byte(m))
+						if err != nil {
+							disconnected <- id
+						}
+					}(user, m)
+				}	
+				*/
+			}
 
 		case u := <-disconnected:
 			fmt.Printf("user %s\n disconnected\n", u)

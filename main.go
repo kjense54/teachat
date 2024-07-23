@@ -5,12 +5,13 @@ import (
 	"net"
 	"log"
  "strings"
+	"encoding/gob"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const WIDTH = 60
@@ -22,10 +23,10 @@ type (
 
 // model stores application state
 type model struct {
-	conn *net.Conn
+	conn net.Conn
 	viewport viewport.Model
 	messages []string
-	messageToSend string
+	username string
 	connected bool
 	textarea textarea.Model
 	senderStyle lipgloss.Style
@@ -65,7 +66,7 @@ func initialModel() model {
 		conn: nil,
 		textarea: ta,
 		messages: []string{},
-		messageToSend: "",
+		username: "user1",
 		connected: false,
 		viewport: vp,
 		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
@@ -74,6 +75,8 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
+	// register custom type for the encoder
+	gob.Register(Message{})
 	return textarea.Blink
 }
 
@@ -92,22 +95,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			fmt.Println(m.textarea.Value())
+			m.conn.Close()
 			return m, tea.Quit
 		case tea.KeyEnter:
 			if m.textarea.Value() == "/connect" {
 				m.conn = ConnectToServer()
-				KeepAlive(*m.conn)
+				KeepAlive(m.conn)
 				m.connected = true
 			}
-			m.messageToSend = m.textarea.Value() 
-			m.messages = append(m.messages, m.ChopText(m.senderStyle.Render("You: ") + m.messageToSend, WIDTH)...)
+			send := Message{Username: m.username, Text: m.textarea.Value()}
+			m.messages = append(m.messages, m.ChopText(m.senderStyle.Render("You: ") + m.textarea.Value(), WIDTH)...)
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.textarea.Reset()
 			m.viewport.GotoBottom()
 
 
 			if m.connected {
-				return m, SendCmd(m, *m.conn) 
+				return m, SendCmd(send, m.conn) 
 			}
 		}
 
@@ -138,4 +142,6 @@ TODO:
 	-[x] stay connected to server for program lifetime
 	-[x] send message to server (simple)
 	-[ ] send message struct to server (complex) using glob
+	-[ ] implement ./help to view commands
+	-[ ] commands: change username, dm user, quit
 		*/
